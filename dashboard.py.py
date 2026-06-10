@@ -5,53 +5,56 @@ import joblib
 import os
 import matplotlib.pyplot as plt
 
-# Page config
 st.set_page_config(page_title="M&V Dashboard - RETROFIT-LAT", layout="wide")
 
-# Title
 st.title("🏠 AI-based Measurement & Verification (M&V) Dashboard")
 st.markdown("*Energy savings prediction for residential building retrofits using Random Forest*")
-st.markdown("**Dataset:** RETROFIT-LAT (1,010 building projects, before & after retrofit)")
 
-# Load model
+# Load model and features
 @st.cache_resource
 def load_model():
-    # Try multiple possible paths
-    possible_paths = [
+    # Try multiple paths
+    model_paths = [
         'models/thesis_mv_random_forest.pkl',
         'thesis_mv_random_forest.pkl',
         'model.pkl'
     ]
     
-    model_path = None
-    for path in possible_paths:
+    model = None
+    model_path_used = None
+    
+    for path in model_paths:
         if os.path.exists(path):
-            model_path = path
+            model = joblib.load(path)
+            model_path_used = path
             break
     
-    if model_path is None:
+    if model is None:
         st.error("❌ Model file not found!")
-        st.info("""
-        **Troubleshooting:**
-        1. Check that `models/thesis_mv_random_forest.pkl` exists in GitHub
-        2. Or upload the model file manually
-        3. Make sure the file is not zipped
-        """)
         return None, None
     
-    # Load features
-    features_path = 'models/thesis_mv_features.txt'
-    if not os.path.exists(features_path):
-        features_path = 'thesis_mv_features.txt'
+    # Try to load features
+    features_paths = [
+        'models/thesis_mv_features.txt',
+        'thesis_mv_features.txt',
+        'features.txt'
+    ]
     
-    model = joblib.load(model_path)
+    features = None
+    for path in features_paths:
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                features = [line.strip() for line in f.readlines()]
+            break
     
-    if os.path.exists(features_path):
-        with open(features_path, 'r') as f:
-            features = [line.strip() for line in f.readlines()]
-    else:
-        # Default features
-        features = ['floor_area', 'building_age', 'floors', 'retrofit', 'region_code', 'class_code']
+    # If features file not found, try to infer from model
+    if features is None:
+        st.warning("⚠️ Features file not found. Using default features.")
+        # Try to get feature names from model if available
+        if hasattr(model, 'feature_names_in_'):
+            features = list(model.feature_names_in_)
+        else:
+            features = ['floor_area', 'building_age', 'floors', 'retrofit']
     
     return model, features
 
@@ -60,40 +63,41 @@ model, FEATURES = load_model()
 if model is None:
     st.stop()
 
-st.success("✅ Model loaded successfully!")
+st.success(f"✅ Model loaded! Features: {len(FEATURES)}")
+
+# Display features for debugging
+with st.expander("🔧 Model Info (Debug)"):
+    st.write(f"**Features expected ({len(FEATURES)}):** {FEATURES}")
+    if hasattr(model, 'n_features_in_'):
+        st.write(f"**Model expects:** {model.n_features_in_} features")
 
 # ==========================================
 # SIDEBAR INPUTS
 # ==========================================
 st.sidebar.header("📋 Building Parameters")
 
-floor_area = st.sidebar.number_input("🏠 Floor Area (m²)", min_value=30, max_value=300, value=90, step=5)
-building_age = st.sidebar.number_input("📅 Building Age (years)", min_value=0, max_value=150, value=20, step=5)
-floors = st.sidebar.selectbox("🏢 Number of Floors", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-retrofit = st.sidebar.selectbox("🔧 Retrofit Status", [0, 1], format_func=lambda x: "✅ Yes (Retrofitted)" if x == 1 else "❌ No (Baseline)")
+# Initialize input values
+input_values = {}
 
-# Region codes (from RETROFIT-LAT dataset)
-region_options = {
-    0: "Riga",
-    1: "Liepaja", 
-    2: "Ventspils",
-    3: "Jelgava",
-    4: "Jurmala",
-    5: "Other"
-}
-region_code = st.sidebar.selectbox("📍 Region", list(region_options.keys()), format_func=lambda x: region_options[x])
-
-# Energy class (A=best, G=worst)
-class_options = {
-    0: "A (Best)",
-    1: "B",
-    2: "C", 
-    3: "D",
-    4: "E",
-    5: "F",
-    6: "G (Worst)"
-}
-class_code = st.sidebar.selectbox("📊 Energy Class", list(class_options.keys()), format_func=lambda x: class_options[x])
+# Dynamically create inputs based on features
+for feat in FEATURES:
+    if feat == 'floor_area':
+        input_values[feat] = st.sidebar.number_input("🏠 Floor Area (m²)", min_value=30, max_value=300, value=90, step=5)
+    elif feat == 'building_age':
+        input_values[feat] = st.sidebar.number_input("📅 Building Age (years)", min_value=0, max_value=150, value=20, step=5)
+    elif feat == 'floors':
+        input_values[feat] = st.sidebar.selectbox("🏢 Number of Floors", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    elif feat == 'retrofit':
+        input_values[feat] = st.sidebar.selectbox("🔧 Retrofit Status", [0, 1], format_func=lambda x: "✅ Yes (Retrofitted)" if x == 1 else "❌ No (Baseline)")
+    elif feat == 'region_code':
+        region_options = {0: "Riga", 1: "Liepaja", 2: "Ventspils", 3: "Jelgava", 4: "Jurmala", 5: "Other"}
+        input_values[feat] = st.sidebar.selectbox("📍 Region", list(region_options.keys()), format_func=lambda x: region_options[x])
+    elif feat == 'class_code':
+        class_options = {0: "A (Best)", 1: "B", 2: "C", 3: "D", 4: "E", 5: "F", 6: "G (Worst)"}
+        input_values[feat] = st.sidebar.selectbox("📊 Energy Class", list(class_options.keys()), format_func=lambda x: class_options[x])
+    else:
+        # Default to number input for unknown features
+        input_values[feat] = st.sidebar.number_input(f"📊 {feat}", value=0, step=1)
 
 # ==========================================
 # PREDICTION
@@ -102,20 +106,21 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     if st.button("🔮 Predict Energy Consumption", type="primary", use_container_width=True):
-        # Prepare features
-        features_df = pd.DataFrame([[
-            floor_area, building_age, floors, retrofit, region_code, class_code
-        ]], columns=FEATURES)
+        # Prepare features in correct order
+        features_list = [input_values[feat] for feat in FEATURES]
+        features_df = pd.DataFrame([features_list], columns=FEATURES)
         
         prediction = model.predict(features_df)[0]
         
         st.metric("⚡ Predicted Energy Consumption", f"{prediction:.2f} kWh/m²")
         
-        # Calculate savings if retrofitted
-        if retrofit == 1:
-            # Baseline (without retrofit)
-            baseline_df = features_df.copy()
-            baseline_df['retrofit'] = 0
+        # Calculate savings
+        if 'retrofit' in FEATURES and input_values['retrofit'] == 1:
+            # Create baseline
+            baseline_values = features_list.copy()
+            retrofit_idx = FEATURES.index('retrofit')
+            baseline_values[retrofit_idx] = 0
+            baseline_df = pd.DataFrame([baseline_values], columns=FEATURES)
             baseline_pred = model.predict(baseline_df)[0]
             
             savings = baseline_pred - prediction
@@ -127,55 +132,39 @@ with col1:
             fig, ax = plt.subplots(figsize=(8, 5))
             categories = ['Baseline\n(No Retrofit)', 'Retrofitted']
             values = [baseline_pred, prediction]
-            colors = ['#e74c3c', '#2ecc71']
             
-            bars = ax.bar(categories, values, color=colors, edgecolor='black', linewidth=1.5)
-            
+            bars = ax.bar(categories, values, color=['#e74c3c', '#2ecc71'], edgecolor='black', linewidth=1.5)
             for bar, val in zip(bars, values):
-                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
-                       f'{val:.1f} kWh/m²', ha='center', fontweight='bold')
+                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3, f'{val:.1f}', ha='center', fontweight='bold')
             
-            ax.set_ylabel('Energy Consumption (kWh/m²)', fontsize=12)
-            ax.set_title('Retrofit Impact on Energy Consumption', fontweight='bold', fontsize=14)
+            ax.set_ylabel('Energy Consumption (kWh/m²)')
+            ax.set_title('Retrofit Impact', fontweight='bold')
             ax.grid(axis='y', alpha=0.3)
-            
             st.pyplot(fig)
             
-        else:
-            # Show potential savings if retrofitted
-            retrofit_df = features_df.copy()
-            retrofit_df['retrofit'] = 1
+        elif 'retrofit' in FEATURES and input_values['retrofit'] == 0:
+            # Show potential
+            retrofit_values = features_list.copy()
+            retrofit_idx = FEATURES.index('retrofit')
+            retrofit_values[retrofit_idx] = 1
+            retrofit_df = pd.DataFrame([retrofit_values], columns=FEATURES)
             retrofit_pred = model.predict(retrofit_df)[0]
             potential_savings = prediction - retrofit_pred
             potential_pct = (potential_savings / prediction) * 100
-            
             st.info(f"💡 **If retrofitted:** Would save ~{potential_savings:.2f} kWh/m² ({potential_pct:.1f}%)")
-            st.caption("👉 Try selecting 'Retrofitted' above to see actual savings")
 
 with col2:
     st.info("""
     **📖 About this M&V System**
     
-    | Item | Details |
-    |------|---------|
-    | **Model** | Random Forest Regressor |
-    | **Dataset** | RETROFIT-LAT |
-    | **Samples** | 1,010 buildings |
-    | **Features** | 6 parameters |
+    - **Model:** Random Forest Regressor
+    - **Data:** RETROFIT-LAT dataset
+    - **Target:** Energy (kWh/m²)
     
-    **Features used:**
-    - Floor area (m²)
-    - Building age (years)
-    - Number of floors
-    - Retrofit status
-    - Region
-    - Energy class
-    
-    **Target:** Energy consumption (kWh/m²)
+    **Interpretation:**
+    - Lower energy = more efficient
+    - Savings > 20% = good retrofit
     """)
 
-# ==========================================
-# FOOTER
-# ==========================================
 st.markdown("---")
-st.caption("🎓 AI-based Measurement & Verification (M&V) System | Thesis Project | Data: RETROFIT-LAT (Zenodo)")
+st.caption("🎓 AI-based Measurement & Verification System | Thesis Project")
