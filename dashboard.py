@@ -37,6 +37,19 @@ if model is None:
 
 st.success("✅ Model loaded successfully!")
 
+# Load model performance metrics
+import json
+
+@st.cache_resource
+def load_metrics():
+    metrics_path = 'models/model_metrics.json'
+    if os.path.exists(metrics_path):
+        with open(metrics_path, 'r') as f:
+            return json.load(f)
+    return None
+
+metrics = load_metrics()
+
 # ==========================================
 # SIDEBAR INPUTS
 # ==========================================
@@ -249,6 +262,16 @@ with col2:
     - **Gauge:** Savings efficiency (0-100%)
     - **Feature Importance:** Key drivers of energy use
     """)
-    
+
+    # Show model performance
+if metrics:
+    with st.sidebar.expander("📊 Model Performance", expanded=True):
+        st.metric("R² Score", f"{metrics['r2_score']:.4f}", 
+                  help="Higher is better (1.0 = perfect)")
+        st.metric("MAE", f"{metrics['mae']:.2f} kWh/m²/yr",
+                  help="Lower is better")
+        st.caption(f"RMSE: {metrics['rmse']:.2f} kWh/m²/yr")
+        st.progress(metrics['r2_score'], text="Model Accuracy")
+        
     st.markdown("---")
     st.caption("🎓 AI-based Measurement & Verification System | Thesis Project")
