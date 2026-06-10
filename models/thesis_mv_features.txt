@@ -1,0 +1,6 @@
+floor_area
+building_age
+floors
+retrofit
+region_code
+class_code
